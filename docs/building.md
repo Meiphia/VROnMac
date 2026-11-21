@@ -8,7 +8,7 @@ Use an Apple Silicon Mac with Xcode command-line tools and Python 3. The current
 bash scripts/build-launcher.sh
 ```
 
-This compiles launcher/ sources, the C++ microphone ring, and the Swift setup tests. Outputs are build/launcher/VRonMac and build/launcher/setup-tests. Tests use temporary fixture directories.
+This compiles launcher/ sources, the C++ microphone ring, and the Swift setup tests. Outputs are build/launcher/VRonMac and build/launcher/setup-tests. Tests use temporary fixture directories. Runtime swap/restore integration also accepts VRONMAC_RUNTIME_FIXTURES pointing to the tracker/ directory of a verified component payload. Source-only runs report that binary integration check as skipped and still verify rejection of unknown runtime data.
 
 The active launcher sources were promoted from the development work directory for this first source publication. The older scripts/package-launcher.py assembles the earlier 0.1 developer preview. Use scripts/package-preview.py for the current launcher.
 
