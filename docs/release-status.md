@@ -1,6 +1,6 @@
 # 0.2.15-preview.1 release status
 
-Prepared on 2026-11-21 from the local 0.2.15 development build.
+Prepared on 2026-11-21 from the local 0.2.15 development build and published as an experimental prerelease on 2026-11-22.
 
 ## Scope
 
@@ -19,7 +19,7 @@ VRChat VR, audio, full-body tracking, face tracking over OSC, and successful EAC
 
 ## Binary publication
 
-The GitHub app release remains a draft.
+The compiled app is available as [0.2.15-preview.1](https://github.com/Meiphia/VROnMac/releases/tag/v0.2.15-preview.1), with a source archive and SHA-256 checksums. The dependency checks below remain outstanding.
 
 The bundled native OSC codec was rebuilt from a SimpleRustOSC snapshot that has no license file or Cargo license declaration. Redistribution permission must be established, or the dependency replaced and the resulting face tracking path tested.
 

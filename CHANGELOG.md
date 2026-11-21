@@ -2,7 +2,7 @@
 
 ## 0.2.15-preview.1 — 2026-11-21
 
-First publication of the VRonMac source tree and preparation of a draft app release.
+First publication of the VRonMac source tree. The compiled app was published as an experimental prerelease on 2026-11-22.
 
 - Native SwiftUI setup and session launcher.
 - Windows VRChat through Steam, NotProton and Voile.
@@ -13,4 +13,4 @@ First publication of the VRonMac source tree and preparation of a draft app rele
 - Frame watchdog for investigating intermittent freezes.
 - Current launcher and full-body sources promoted into the public source layout.
 
-The full app release remains a draft pending bundled dependency redistribution checks. Intermittent crashes and freezes remain under investigation.
+Bundled dependency redistribution checks remain outstanding. Intermittent crashes and freezes remain under investigation.

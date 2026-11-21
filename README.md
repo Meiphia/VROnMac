@@ -16,7 +16,7 @@ VRonMac combines a native SwiftUI launcher, a Wine-side OpenXR runtime, a Metal 
 
 ## Downloads
 
-The first app build is being prepared as **0.2.15-preview.1**. Its GitHub release remains a draft while bundled component redistribution is checked. See [release status](docs/release-status.md) for the exact outstanding work.
+Download **[0.2.15-preview.1 for Apple Silicon](https://github.com/Meiphia/VROnMac/releases/download/v0.2.15-preview.1/VRonMac-0.2.15-preview.1-macOS-arm64.zip)** from [GitHub Releases](https://github.com/Meiphia/VROnMac/releases/tag/v0.2.15-preview.1). The release includes a source archive and SHA-256 checksums. See [release status](docs/release-status.md) for known limitations and outstanding dependency checks.
 
 ## Requirements
 

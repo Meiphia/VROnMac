@@ -1,6 +1,6 @@
 # Getting started
 
-The first app release is a draft. These instructions describe the current developer preview.
+Download the compiled app from [GitHub Releases](https://github.com/Meiphia/VROnMac/releases/tag/v0.2.15-preview.1), extract the ZIP, and open VRonMac.app. These instructions describe the experimental preview.
 
 ## Before launching
 
