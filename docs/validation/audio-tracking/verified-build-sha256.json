@@ -1,0 +1,8 @@
+{
+  "dist/audio-tracking/VRConMac-Quest.apk": "268162e202f814a7bb2335cdd5b22f51a88b054b9b7138a29a5bbb0be8a29597",
+  "dist/audio-tracking/VRConMac Microphone.pkg": "cd2c93783e43a2786b39021aebfe533b63e3e148effaa3b8bab67644a181d9fe",
+  "dist/audio-tracking/VRConMac Audio.app/Contents/MacOS/VRConMacAudio": "27a0d83c42016936d317da2ab6e026a4f8c64ef5b06bbe5f0be5d590952a7270",
+  "dist/audio-tracking/VRCFaceTracking Mac.app/Contents/Resources/vrcft/fti_osc.dylib": "a96432254814854d6e3b718e9a1ead3937d0282f83eeab1676520b42f68ff2c7",
+  "runtime-host/oxrsys-audio-tracking/liboxrsys-runtime.dylib": "3a3fa8e3ca76142e102edab5c764bd77594d2e8c833b91d77df5f58af8ff0348",
+  "runtime-host/oxrsys-audio-tracking/oxrsys-runtime.json": "f4b4c08c908762b3519b96569e7359cf37e8884680de0e4c6e08ea10dbdffdbc"
+}

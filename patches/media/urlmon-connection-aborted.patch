@@ -1,0 +1,19 @@
+diff --git a/dlls/urlmon/http.c b/dlls/urlmon/http.c
+index e592f69..7ea8b0a 100644
+--- a/dlls/urlmon/http.c
++++ b/dlls/urlmon/http.c
+@@ -600,7 +600,13 @@ static void HttpProtocol_on_error(Protocol *prot, DWORD error)
+     TRACE("(%p) %ld\n", prot, error);
+ 
+     if(prot->flags & FLAG_FIRST_CONTINUE_COMPLETE) {
+-        FIXME("Not handling error %ld\n", error);
++        if (error == ERROR_INTERNET_CONNECTION_ABORTED) {
++            /* The async reader needs a terminal result when the transfer is cut short. */
++            if (SUCCEEDED(protocol_abort(prot, internet_error_to_hres(error))))
++                protocol_close_connection(prot);
++        } else {
++            FIXME("Not handling error %ld\n", error);
++        }
+         return;
+     }
+ 

@@ -1,0 +1,14 @@
+; VRConMac runtime config. Lives next to vrconmac_xr.dll inside the Wine prefix.
+; Env vars VRCONMAC_HOST / VRCONMAC_PORT / VRCONMAC_FRAME_LATENCY / VRCONMAC_VERBOSE override these.
+
+; Where vrconmac-bridge is listening (on the Mac). 127.0.0.1 works when the guest shares the host's
+; loopback, which it does under voile-lkd (guest sockets are real macOS sockets).
+host = 127.0.0.1
+port = 47811
+connect_timeout_ms = 5000
+
+; 1 = read back the previous frame's GPU copy (no stall, +1 frame latency)
+; 0 = read back immediately (stalls the GPU every frame, lowest latency)
+frame_latency = 1
+
+verbose = 0

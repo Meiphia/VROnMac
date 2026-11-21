@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a VRonMac setup, tracking, or stability problem.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: VRonMac version
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Mac, macOS, and headset
+    validations:
+      required: true
+  - type: textarea
+    id: failure
+    attributes:
+      label: What happened
+      description: Include what you were doing, the approximate time and timezone, and whether VRChat froze, exited, or lost headset video.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Export launch diagnostics before restarting. Review the report and remove account names, device identifiers, and other personal information before attaching it.

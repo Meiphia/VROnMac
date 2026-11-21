@@ -1,0 +1,85 @@
+using VRCFaceTracking.Core.Contracts;
+using VRCFaceTracking.Core.Models.ParameterDefinition;
+using VRCFaceTracking.Core.OSC;
+using VRCFaceTracking.Core.Params.Data;
+
+namespace VRCFaceTracking.Core.Services;
+
+public class ParameterSenderService
+{
+    // We probably don't need a queue since we use osc message bundles, but for now, we're keeping it as
+    // we might want to allow a way for the user to specify bundle or single message sends in the future
+    private static readonly object QueueLock = new();
+    private static readonly Queue<OscMessage> SendQueue = new();
+
+    private readonly OscSendService _sendService;
+    private readonly UnifiedTrackingMutator _mutator; // We don't use this but we do want DI to run its constructor
+
+    private readonly SemaphoreSlim _flushLock = new(1, 1);
+
+    public static bool AllParametersRelevantStatic
+    {
+        get; set;
+    }
+    public bool AllParametersRelevant
+    {
+        get => AllParametersRelevantStatic;
+        set
+        {
+            if (AllParametersRelevantStatic == value) return;
+            AllParametersRelevantStatic = value;
+            Clear();
+            foreach (var parameter in UnifiedTracking.AllParameters)
+            {
+                parameter.ResetParam(Array.Empty<IParameterDefinition>(), new NullAvatarDef("Always Relevant", "alwaysrelevant"));
+            }
+        }
+    }
+
+    public ParameterSenderService(OscSendService sendService, UnifiedTrackingMutator mutator)
+    {
+        _sendService = sendService;
+        _mutator = mutator;
+    }
+
+    public static void Enqueue(OscMessage message)
+    {
+        lock (QueueLock)
+        {
+            SendQueue.Enqueue(message);
+        }
+    }
+
+    public static void Clear()
+    {
+        lock (QueueLock)
+        {
+            SendQueue.Clear();
+        }
+    }
+
+    public async Task FlushAsync(CancellationToken cancellationToken)
+    {
+        await _flushLock.WaitAsync(cancellationToken);
+        try
+        {
+            OscMessage[] messages;
+            lock (QueueLock)
+            {
+                if (SendQueue.Count == 0) return;
+                messages = SendQueue.ToArray();
+                SendQueue.Clear();
+            }
+
+            await _sendService.Send(messages, cancellationToken);
+        }
+        catch (Exception e)
+        {
+            SentrySdk.CaptureException(e);
+        }
+        finally
+        {
+            _flushLock.Release();
+        }
+    }
+}

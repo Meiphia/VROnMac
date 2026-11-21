@@ -1,0 +1,8 @@
+{
+  "libsurvive.tar.gz": "4d1f9c1354de198deecfec0c2fefd13296e4eb4454b77b43d02c474c9f99fe18",
+  "hidapi.tar.gz": "5d84dec684c27b97b921d2f3b73218cb773cf4ea915caee317ac8fc73cef8136",
+  "motoc.tar.gz": "c97a1182658681aa5e5d398b6206eac48b9decf9e1c3e426a6c1888cdedda662",
+  "eigenGitCommit": "1ac855c25dc4aa8453c8e18e0db55336b6bdd0ba",
+  "monadoGitCommit": "2b7f5cb0fb0b5b5e7b6b12e85e94b08bd37e4463",
+  "opencompositeGitCommit": "cff07db75c4823afe93ed7027b03d5f7bc86f164"
+}

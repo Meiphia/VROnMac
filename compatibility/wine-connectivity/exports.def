@@ -1,0 +1,5 @@
+LIBRARY windows.networking.connectivity
+EXPORTS
+DllGetActivationFactory
+DllGetClassObject
+VrcmConnectivityFixVersion

@@ -1,0 +1,7 @@
+Setup fixture tests: passed.
+Read-only doctor: six existing setup checks passed.
+Bundled payload hash/path verification: passed.
+Deep/strict code signature verification: passed.
+Current working VR baseline: six saved file hashes unchanged.
+Combined GUI/session hardware test: not yet performed.
+Public release: not approved/ready; see distribution plan.

@@ -1,0 +1,14 @@
+START: networking API probe
+CALL: CoInitializeEx(NULL, COINIT_MULTITHREADED)
+IDENTITY: VRConMac connectivity fix version 1 verified
+MODULE: Z:\opt\game\windows.networking.connectivity.dll
+CALL: WindowsCreateString(cls,ARRAYSIZE(cls)-1,&name)
+CALL: get_factory(name,&factory)
+CALL: IActivationFactory_QueryInterface(factory,&IID_INetworkInformationStatics,(void **)&statics)
+CALL: INetworkInformationStatics_GetInternetConnectionProfile(statics,&profile)
+CALL: IConnectionProfile_GetConnectionCost(profile,&cost)
+CALL: IConnectionCost_get_NetworkCostType(cost,&type)
+CALL: IConnectionCost_get_Roaming(cost,&flag)
+CALL: IConnectionCost_get_OverDataLimit(cost,&flag)
+CALL: IConnectionCost_get_ApproachingDataLimit(cost,&flag)
+PASS: GetConnectionCost and all billing properties succeeded (cost type 1).

@@ -1,0 +1,13 @@
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "vrconmac-lkd"
+    {
+      "install_path" "."
+      "display_name" "VRonMac Linux engine (voile-lkd)"
+      "from_oslist" "windows"
+      "to_oslist" "TO_OSLIST"
+    }
+  }
+}

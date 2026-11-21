@@ -1,0 +1,8 @@
+{
+  "runtime-host/oxrsys-paced-pose/liboxrsys-runtime.dylib": "2d29f65c2255dbbe26e4802f19e3a72685336343f5b95dec18bff646afd5c4f3",
+  "runtime-host/oxrsys-paced-pose/oxrsys-runtime.json": "1a44887abe4c9407639356eaaa01d471289241e56f222c167a6954eb17fc605f",
+  "prebuilt/vrconmac_xr.dll": "2c44d854ef24515827f2696e312aaf4b083270e1204d12009d284d42dd7aa7d1",
+  "bridge/build/vrconmac-bridge": "d80d86457cb174c7f73a5b6d63859550e175069e57be6862319fd2bf03e2e66c",
+  "compatibility/wine-connectivity/windows.networking.connectivity.dll": "4dfa74a5215273e74799ff9038d0008edc690bcc52f78fc9aac4295f417deeb2",
+  "compat-tool/vrconmac-lkd/run": "387de5c0332a57f93e07fba50d58f0c10929bba1f04c54cd911ee576508594d0"
+}

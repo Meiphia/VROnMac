@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <TargetPlatformMinVersion>$(VftTargetPlatformMinVersion)</TargetPlatformMinVersion>
+    <RootNamespace>VRCFaceTracking.ModuleProcess</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Sentry.Extensions.Logging" />
+    <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Condition="$(RuntimeIdentifier.StartsWith('linux'))" />
+    <RuntimeHostConfigurationOption Include="System.Globalization.AppLocalIcu" Value="68.2.0.9" Condition="$(RuntimeIdentifier.StartsWith('linux'))" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VRCFaceTracking.Core\VRCFaceTracking.Core.csproj" />
+    <ProjectReference Include="..\VRCFaceTracking.SDK\VRCFaceTracking.SDK.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Properties\" />
+  </ItemGroup>
+</Project>

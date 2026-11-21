@@ -1,0 +1,3 @@
+2026-11-05: user heard headset test beeps.
+2026-11-05: user confirmed native face tracking works in VRChat.
+2026-11-05: user confirmed headset audio and microphone work in VRChat.

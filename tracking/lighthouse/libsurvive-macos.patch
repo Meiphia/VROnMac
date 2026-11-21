@@ -1,0 +1,319 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -294,3 +294,26 @@
+ include(GNUInstallDirs)
+ configure_file(survive.pc.in survive.pc @ONLY)
+ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/survive.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
++
++# VRConMac native diagnostic (outside the upstream source directory).
++add_executable(vrconmac-pose-probe ../probes/pose-probe.cpp)
++target_link_libraries(vrconmac-pose-probe survive)
++
++# Preserve static driver/poser registration constructors on Darwin.
++
++# Driver/poser plugins are separate archives even in a static build.
++target_link_libraries(vrconmac-pose-probe ${SURVIVE_BUILT_PLUGINS})
++foreach(plugin ${SURVIVE_BUILT_PLUGINS})
++  target_link_options(vrconmac-pose-probe PRIVATE "LINKER:-force_load,$<TARGET_FILE:${plugin}>")
++endforeach()
++
++# Experimental native origin calibrator and tracker publisher.
++add_executable(vrconmac-tracker-service ../fullbody/tracker_service.cpp)
++target_include_directories(vrconmac-tracker-service PRIVATE ../eigen)
++target_link_libraries(vrconmac-tracker-service survive ${SURVIVE_BUILT_PLUGINS})
++foreach(plugin ${SURVIVE_BUILT_PLUGINS})
++  target_link_options(vrconmac-tracker-service PRIVATE "LINKER:-force_load,$<TARGET_FILE:${plugin}>")
++endforeach()
++
++# Keep the GSS rolling window below the optimizer's 20-pose upper bound.
++target_compile_definitions(driver_global_scene_solver PRIVATE GSS_NUM_STORED_SCENES=16)
+--- a/redist/os_generic.unix.h
++++ b/redist/os_generic.unix.h
+@@ -144,6 +144,48 @@
+ 	free(om);
+ }
+ 
++// VRConMac: macOS does not implement unnamed POSIX semaphores.
++#ifdef __APPLE__
++typedef struct {
++    pthread_mutex_t mutex;
++    pthread_cond_t changed;
++    unsigned count;
++} OGMacSemaphore;
++OSG_INLINE og_sema_t OGCreateSema() {
++    OGMacSemaphore *s = (OGMacSemaphore *)calloc(1, sizeof(*s));
++    if (!s) abort();
++    _OGHandlePosixError("semaphore mutex", pthread_mutex_init(&s->mutex, NULL));
++    _OGHandlePosixError("semaphore condition", pthread_cond_init(&s->changed, NULL));
++    return (og_sema_t)s;
++}
++OSG_INLINE int OGGetSema(og_sema_t os) {
++    OGMacSemaphore *s = (OGMacSemaphore *)os;
++    pthread_mutex_lock(&s->mutex);
++    int count = (int)s->count;
++    pthread_mutex_unlock(&s->mutex);
++    return count;
++}
++OSG_INLINE void OGLockSema(og_sema_t os) {
++    OGMacSemaphore *s = (OGMacSemaphore *)os;
++    pthread_mutex_lock(&s->mutex);
++    while (!s->count) pthread_cond_wait(&s->changed, &s->mutex);
++    --s->count;
++    pthread_mutex_unlock(&s->mutex);
++}
++OSG_INLINE void OGUnlockSema(og_sema_t os) {
++    OGMacSemaphore *s = (OGMacSemaphore *)os;
++    pthread_mutex_lock(&s->mutex);
++    ++s->count;
++    pthread_cond_signal(&s->changed);
++    pthread_mutex_unlock(&s->mutex);
++}
++OSG_INLINE void OGDeleteSema(og_sema_t os) {
++    OGMacSemaphore *s = (OGMacSemaphore *)os;
++    pthread_cond_destroy(&s->changed);
++    pthread_mutex_destroy(&s->mutex);
++    free(s);
++}
++#else
+ OSG_INLINE og_sema_t OGCreateSema() {
+ 	sem_t *sem = (sem_t *)malloc(sizeof(sem_t));
+ 	sem_init(sem, 0, 0);
+@@ -164,6 +206,8 @@
+ 	sem_destroy((sem_t *)os);
+ 	free(os);
+ }
++
++#endif
+ 
+ OSG_INLINE void OGSignalCond(og_cv_t cv) {
+ 	_OGHandlePosixError("OGSignalCond", pthread_cond_signal((pthread_cond_t *)cv));
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -57,10 +57,10 @@
+   IF(WIN32)
+     SET(SURVIVE_SRCS ${SURVIVE_SRCS} ../redist/hid-windows.c)
+   elseif(APPLE)
+-    find_package(PkgConfig REQUIRED)
+-    pkg_check_modules(HIDAPI REQUIRED hidapi)
+-    list(APPEND ADDITIONAL_LIBRARIES ${HIDAPI_LIBRARIES})
+-    include_directories(${HIDAPI_INCLUDE_DIRS})
++    # VRConMac: use the official local HIDAPI CMake target; pkg-config is optional.
++    find_package(hidapi CONFIG REQUIRED)
++    list(APPEND ADDITIONAL_LIBRARIES hidapi::hidapi)
++    include_directories(${CMAKE_PREFIX_PATH}/include/hidapi)
+   else()
+     list(APPEND ADDITIONAL_LIBRARIES udev hidapi-libusb)
+   endif()
+--- a/src/driver_simulator.c
++++ b/src/driver_simulator.c
+@@ -739,7 +739,10 @@
+ 			lh_count = 2;
+ 
+ 		for (int i = 0; i < lh_count; i++) {
++			// Preserve the runtime-owned Kalman tracker when installing simulated calibration.
++			struct SurviveKalmanLighthouse *tracker = ctx->bsd[i].tracker;
+ 			ctx->bsd[i] = simulated_bsd[i];
++			ctx->bsd[i].tracker = tracker;
+ 
+ 			for (int axis = 0; axis < 2; axis++) {
+ 				for (int cal_idx = 0; cal_idx < sizeof(fcalNoise) / sizeof(FLT); cal_idx++) {
+--- a/src/driver_vive.c
++++ b/src/driver_vive.c
+@@ -3329,8 +3329,15 @@
+ 	sv->uiface[USB_DEV_TRACKER1_LIGHTCAP].actual_len = 64;
+ */
+ #endif
+-	// Note: don't sleep for HTCVive, the handle_events call can block
++#ifdef HIDAPI
++	// HID reads are nonblocking and have no libusb event wait. Drain queued
++	// reports on each pass, then yield instead of spinning between USB packets.
++	// A 1ms minimum poll period remains below the 2ms Watchman report interval.
++	ctx->poll_min_time_ms = 1;
++#else
++	// libusb_handle_events_timeout already supplies a bounded blocking wait.
+ 	ctx->poll_min_time_ms = 0;
++#endif
+ 
+ 	return 0;
+ fail_gracefully:
+--- a/src/driver_vive.hidapi.h
++++ b/src/driver_vive.hidapi.h
+@@ -85,8 +85,11 @@
+ 	SurviveUSBInterface *iface = v;
+ 	USB_INTERFACE_HANDLE *hp = &iface->uh;
+ 
+-	if ((iface->actual_len = hid_read(*hp, iface->buffer, sizeof(iface->swap_buffer[0]) )) > 0) {
+-		// if( iface->actual_len  == 52 ) continue;
++	// Drain a bounded batch so yielding between nonblocking polls cannot leave
++	// one report per pass queued after a scheduling delay.
++	for (unsigned report = 0; report < 64; ++report) {
++		iface->actual_len = hid_read(*hp, iface->buffer, sizeof(iface->swap_buffer[0]));
++		if (iface->actual_len <= 0) break;
+ 		iface->packet_count++;
+ 		survive_data_cb(OGGetAbsoluteTimeUS(), iface);
+ 	}
+--- a/src/ootx_decoder.c
++++ b/src/ootx_decoder.c
+@@ -9,6 +9,7 @@
+ #include <assert.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <math.h>
+ 
+ #include <os_generic.h>
+ 
+@@ -363,3 +364,17 @@
+ 	lhi->mode_current = d->mode_current;
+ 	lhi->nonce = d->nonce;
+ }
++
++// VRConMac: empty payloads have CRC zero, but are not station calibration.
++bool ootx_decode_v15_checked(const ootx_packet *packet, lighthouse_info_v15 *out) {
++    if (!packet || !out || !packet->data || packet->length < 43) return false;
++    init_lighthouse_info_v15(out, packet->data);
++    if (!out->id || out->id == UINT32_MAX || (out->mode_current & 0x7f) >= 16) return false;
++    for (int axis=0;axis<2;++axis) {
++        if (!isfinite(out->fcal_phase[axis]) || !isfinite(out->fcal_tilt[axis]) ||
++            !isfinite(out->fcal_curve[axis]) || !isfinite(out->fcal_gibphase[axis]) ||
++            !isfinite(out->fcal_gibmag[axis]) || !isfinite(out->fcal_ogeephase[axis]) ||
++            !isfinite(out->fcal_ogeemag[axis])) return false;
++    }
++    return true;
++}
+--- a/src/ootx_decoder.h
++++ b/src/ootx_decoder.h
+@@ -95,6 +95,8 @@
+ } lighthouse_info_v15;
+ 
+ void init_lighthouse_info_v15(lighthouse_info_v15 *lhi, uint8_t *data);
++// Checked entry point for gen2 station broadcasts; rejects empty/short payloads.
++bool ootx_decode_v15_checked(const ootx_packet *packet, lighthouse_info_v15 *out);
+ 
+ void init_lighthouse_info_v6(lighthouse_info_v6* lhi, uint8_t* data);
+ void print_lighthouse_info_v6(lighthouse_info_v6* lhi);
+--- a/src/poser_barycentric_svd.c
++++ b/src/poser_barycentric_svd.c
+@@ -182,7 +182,7 @@
+ 	}
+ }
+ 
+-void solve_global_scene(struct SurviveObject *so, PoserDataSVD *dd, PoserDataGlobalScenes *gss) {
++static void solve_global_scene(struct SurviveObject *so, PoserDataSVD *dd, PoserDataGlobalScenes *gss) {
+ 	SurviveContext *ctx = so->ctx;
+ 
+ 	if (gss->scenes == 0 || gss->scenes_cnt == 0)
+--- a/src/poser_mpfit.c
++++ b/src/poser_mpfit.c
+@@ -816,7 +816,7 @@
+ 			   SURVIVE_POSE_EXPAND(*lighthouse_pose));
+ }
+ 
+-bool solve_global_scene(struct SurviveContext *ctx, MPFITData *d, PoserDataGlobalScenes *gss) {
++static bool solve_global_scene(struct SurviveContext *ctx, MPFITData *d, PoserDataGlobalScenes *gss) {
+ 	if (gss->scenes_cnt == 0 || gss->scenes == 0)
+ 		return false;
+ 
+--- a/src/survive_process_gen2.c
++++ b/src/survive_process_gen2.c
+@@ -31,11 +31,10 @@
+ 
+ STATIC_CONFIG_ITEM(SERIALIZE_OOTX, "serialize-ootx", 'b', "Serialize out ootx", 0)
+ static void ootx_packet_clbk_d_gen2(ootx_decoder_context *ct, ootx_packet *packet) {
+-	SurviveContext *ctx = ((SurviveObject *)(ct->user))->ctx;
+-	int id = ct->user1;
+-
+-	lighthouse_info_v15 v15;
+-	init_lighthouse_info_v15(&v15, packet->data);
++    lighthouse_info_v15 v15;
++    if (!ootx_decode_v15_checked(packet, &v15)) return;
++    SurviveContext *ctx = ((SurviveObject *)(ct->user))->ctx;
++    int id = ct->user1;
+ 
+ 	if (survive_configi(ctx, SERIALIZE_OOTX_TAG, SC_GET, 0) == 1) {
+ 		char filename[128];
+@@ -144,47 +143,46 @@
+ 	SV_VERBOSE(105, "\tTime:              %2.2f (%2.2fb/s, %2.2fb/s)", d, decoderContext->stats.bits_seen / d,
+ 			   decoderContext->stats.used_bytes * 8 / d);
+ }
++// VRConMac: maintain an independent station broadcast decoder per tracker.
++// A receiver with occluded sensors must not prevent another receiver's valid
++// station calibration from being used. Keep decoder first for existing readers.
++typedef struct OOTXSource {
++    ootx_decoder_context decoder;
++    struct OOTXSource *next;
++} OOTXSource;
++
+ void survive_ootx_free_decoder_context(struct SurviveContext *ctx, int bsd_idx) {
+-	ootx_decoder_context *decoderContext = ctx->bsd[bsd_idx].ootx_data;
+-	ctx->bsd[bsd_idx].ootx_data = 0;
+-	if (decoderContext == 0)
+-		return;
+-
+-	survive_ootx_dump_decoder_context(ctx, bsd_idx);
+-	ootx_free_decoder_context(decoderContext);
+-	free(decoderContext);
+-}
++    OOTXSource *source = ctx->bsd[bsd_idx].ootx_data;
++    survive_ootx_dump_decoder_context(ctx, bsd_idx);
++    ctx->bsd[bsd_idx].ootx_data = 0;
++    while (source) {
++        OOTXSource *next = source->next;
++        ootx_free_decoder_context(&source->decoder);
++        free(source);
++        source = next;
++    }
++}
++
+ void survive_ootx_behavior(SurviveObject *so, int8_t bsd_idx, int8_t lh_version, int ootx) {
+-	struct SurviveContext *ctx = so->ctx;
+-	if (ctx->bsd[bsd_idx].OOTXChecked == false) {
+-		ootx_decoder_context *decoderContext = ctx->bsd[bsd_idx].ootx_data;
+-
+-		if (decoderContext == 0) {
+-			if (lh_version == 1) {
+-				SV_INFO("OOTX not set for LH in channel %d; attaching ootx decoder using device %s",
+-						ctx->bsd[bsd_idx].mode, so->codename);
+-			} else {
+-				SV_INFO("OOTX not set for LH %d; attaching ootx decoder using device %s", bsd_idx, so->codename);
+-			}
+-			decoderContext = ctx->bsd[bsd_idx].ootx_data = SV_CALLOC(sizeof(ootx_decoder_context));
+-			ootx_init_decoder_context(decoderContext, survive_run_time(ctx));
+-			decoderContext->user1 = bsd_idx;
+-			decoderContext->user = so;
+-			decoderContext->ignore_sync_bit_error = survive_configi(ctx, "ootx-ignore-sync-error", SC_SETCONFIG, 0);
+-			decoderContext->ootx_packet_clbk = lh_version ? ootx_packet_clbk_d_gen2 : ootx_packet_cblk_d_gen1;
+-			decoderContext->ootx_error_clbk = ootx_error_clbk_d;
+-			decoderContext->ootx_bad_crc_clbk = ootx_bad_crc_clbk;
+-		}
+-		if (decoderContext->user == so) {
+-			ootx_pump_bit(decoderContext, ootx);
+-
+-			if (ctx->bsd[bsd_idx].OOTXChecked) {
+-				ctx->bsd[bsd_idx].OOTXChecked = false;
+-				survive_ootx_dump_decoder_context(ctx, bsd_idx);
+-				// survive_ootx_free_decoder_context(ctx, bsd_idx);
+-			}
+-		}
+-	}
++    struct SurviveContext *ctx = so->ctx;
++    if (ctx->bsd[bsd_idx].OOTXChecked) return;
++    OOTXSource *source = ctx->bsd[bsd_idx].ootx_data;
++    while (source && source->decoder.user != so) source = source->next;
++    if (!source) {
++        source = SV_CALLOC(sizeof(*source));
++        source->next = ctx->bsd[bsd_idx].ootx_data;
++        ctx->bsd[bsd_idx].ootx_data = source;
++        ootx_init_decoder_context(&source->decoder, survive_run_time(ctx));
++        source->decoder.user1 = bsd_idx;
++        source->decoder.user = so;
++        source->decoder.ignore_sync_bit_error = survive_configi(ctx, "ootx-ignore-sync-error", SC_SETCONFIG, 0);
++        source->decoder.ootx_packet_clbk = lh_version ? ootx_packet_clbk_d_gen2 : ootx_packet_cblk_d_gen1;
++        source->decoder.ootx_error_clbk = ootx_error_clbk_d;
++        source->decoder.ootx_bad_crc_clbk = ootx_bad_crc_clbk;
++        SV_INFO("Station channel %d: decoding broadcast from %s independently", ctx->bsd[bsd_idx].mode, so->codename);
++    }
++    ootx_pump_bit(&source->decoder, ootx);
++    if (ctx->bsd[bsd_idx].OOTXChecked) ctx->bsd[bsd_idx].OOTXChecked = false;
+ }
+ 
+ SURVIVE_EXPORT void survive_default_sync_process(SurviveObject *so, survive_channel channel, survive_timecode timecode,

@@ -1,0 +1,180 @@
+#!/bin/bash
+# vrconmac-lkd: a Steam compatibility tool (Steam Play, enabled on macOS by NotProton) that runs Windows
+# games on Voile's Linux engine (voile-lkd) instead of CrossOver, so Easy Anti-Cheat loads its Linux module.
+#
+# It reuses what Obelisk downloaded and set up: the Voile runtime (FEX + LKD, voile-wine for Linux, DXMT,
+# the Debian root, Valve's Linux steamclient) and the game's Linux-engine prefix, and starts the game with
+# Obelisk's own launch.sh. Steam picks the launch option, so a game's VR entry works.
+#
+# Steam calls:  run <verb> <exe> [args...]
+# Only the game launch (waitforexitandrun) runs on the Linux engine; helper verbs go to NotProton's runner.
+# Overrides (env): VRCM_OBELISK, VRCM_RUNTIME, VRCM_LKD_HOME, VRCM_GRAPHICS (dxmt|d3dmetal), VRCM_WINEDEBUG,
+#                  VRCM_DRYRUN=1 (print the command instead of running it)
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
+verb=${1:-}
+[ $# -gt 0 ] && shift
+
+case "$verb" in
+getcompatpath)
+    # As NotProton's own tools answer.
+    printf '%s\n' "${STEAM_COMPAT_DATA_PATH:-${1:-}}"
+    exit 0
+    ;;
+getnativepath)
+    printf '%s\n' "${1:-}"
+    exit 0
+    ;;
+waitforexitandrun) ;;
+*)
+    # Helpers (Steam's install-script evaluator, runinprefix...) must really run and report back to Steam
+    # before it starts the game: hand them to NotProton's own CrossOver runner, as if it were picked.
+    helper=${VRCM_HELPER_TOOL:-}
+    if [ -z "$helper" ] && [ -r "$HERE/helper-tool" ]; then
+        IFS= read -r helper < "$HERE/helper-tool"
+    fi
+    tools=$(dirname "$HERE")
+    np_run="$tools/${helper:-notproton}/run"
+    # A NotProton upgrade can replace the configured runner with a named build.
+    if [ ! -x "$np_run" ] && [ -z "${VRCM_HELPER_TOOL:-}" ]; then
+        for candidate in "$tools/notproton" "$tools/notproton-26.3" "$tools"/notproton-*; do
+            name=${candidate##*/}
+            if [[ "$name" =~ ^notproton(-([0-9]+(\.[0-9]+)+|(fex-rosetta|fex|preview)(-[0-9]+)?))?$ ]] &&
+                [ -x "$candidate/run" ] && [ -f "$candidate/compatibilitytool.vdf" ]; then
+                np_run="$candidate/run"
+                break
+            fi
+        done
+    fi
+    if [ -x "$np_run" ]; then
+        exec "$np_run" "$verb" "$@"
+    fi
+    echo "vrconmac-lkd: no $np_run to run helper verb '$verb'" >&2
+    exit 1
+    ;;
+esac
+
+LOG="${STEAM_COMPAT_DATA_PATH:-${TMPDIR:-/tmp}}/vrconmac-lkd.log"
+[ "${VRCM_DRYRUN:-}" = 1 ] || exec >>"$LOG" 2>&1
+echo "=== vrconmac-lkd $(date) verb=$verb"
+printf '  arg: %s\n' "$@"
+
+[ $# -gt 0 ] || { echo "no executable"; exit 2; }
+exe=$1
+shift
+base=$(basename "$exe")
+
+
+OBELISK="${VRCM_OBELISK:-$HOME/Library/Application Support/com.zagrios.obelisk}"
+RUNTIME="${VRCM_RUNTIME:-}"
+if [ -z "$RUNTIME" ]; then
+    for d in "$OBELISK"/Voile/v*/linux; do [ -x "$d/engine/fexdarwin-run" ] && RUNTIME=$d; done
+fi
+[ -n "$RUNTIME" ] && [ -x "$RUNTIME/engine/fexdarwin-run" ] || {
+    echo "No Voile Linux runtime under $OBELISK/Voile: install Obelisk and launch any Linux-engine game once."
+    exit 1
+}
+
+APP=${STEAM_COMPAT_APP_ID:-${SteamAppId:-0}}
+# Steam leaves these unset for compat tools; steam_api needs them (NotProton sets them the same way).
+export SteamAppId="${SteamAppId:-$APP}" SteamGameId="${SteamGameId:-$APP}"
+HOMEDIR="${VRCM_LKD_HOME:-$OBELISK/Prefixes/steam-$APP-windows-linux}"
+[ -f "$HOMEDIR/prefix/system.reg" ] || {
+    echo "No Linux-engine prefix at $HOMEDIR: launch app $APP once in Obelisk (Linux engine) to create it."
+    exit 1
+}
+
+MEDIA=""
+if [ "$APP" = 438100 ] && [ "${VRCM_DISABLE_MEDIA:-0}" != 1 ] && [ -r "$HERE/media.sh" ]; then
+    source "$HERE/media.sh"
+    if ! prepare_media_profile; then
+        echo "Could not prepare the VRonMac media profile."
+        exit 1
+    fi
+    case " $* " in
+        *" --disable-hw-video-decoding "*) ;;
+        *) set -- "$@" --disable-hw-video-decoding ;;
+    esac
+fi
+
+# Resolve the executable and the installation folder (the guest sees it as /opt/game).
+case "$exe" in /*) ;; *) exe="$PWD/$exe" ;; esac
+exe_dir=$(cd "$(dirname "$exe")" 2>/dev/null && pwd -P) || { echo "no such folder: $(dirname "$exe")"; exit 1; }
+exe_abs="$exe_dir/$base"
+INSTALL=$(cd "${STEAM_COMPAT_INSTALL_PATH:-$exe_dir}" 2>/dev/null && pwd -P) || { echo "bad install path"; exit 1; }
+
+# The Linux engine runs neither .NET nor 32-bit programs: a publisher launcher such as VRChat's launch.exe gives
+# way to the Easy Anti-Cheat bootstrapper it would start, with the same arguments (as Obelisk does).
+if [ "$(printf '%s' "$base" | tr 'A-Z' 'a-z')" = launch.exe ] && [ -f "$INSTALL/start_protected_game.exe" ]; then
+    echo "launch.exe -> start_protected_game.exe"
+    exe_abs="$INSTALL/start_protected_game.exe"
+fi
+rel=${exe_abs#"$INSTALL"/}
+[ "$rel" != "$exe_abs" ] || { echo "$exe_abs is outside $INSTALL"; exit 1; }
+guest_exe="/opt/game/$rel"
+here=$(pwd -P)
+case "$here/" in
+"$INSTALL"/*) guest_cwd="/opt/game${here#"$INSTALL"}" ;;
+*) guest_cwd="/opt/game/$(dirname "$rel")" ;;
+esac
+guest_cwd=${guest_cwd%/.}
+
+# Match the Linux client to the host Steam build. Obelisk's bundled client is
+# paired with its own pinned host and must not silently be used against Mac Steam.
+STEAM_CLIENT="${VRCM_STEAM_CLIENT:-$HERE/steam-client}"
+[ -f "$STEAM_CLIENT/linux64/steamclient.so" ] || {
+    echo "Missing matched Steam client: $STEAM_CLIENT (run scripts/prepare-steam-client.py)."
+    exit 1
+}
+
+# lsteamclient finds Valve's Linux steamclient through the guest home's .steam/sdk64.
+if [ "${VRCM_DRYRUN:-}" != 1 ]; then
+    mkdir -p "$HOMEDIR/.steam"
+    [ -L "$HOMEDIR/.steam/sdk64" ] || ln -s /opt/steam/linux64 "$HOMEDIR/.steam/sdk64"
+fi
+
+export OBELISK_APP_NAME="${OBELISK_APP_NAME:-$(basename "$INSTALL")}"
+cmd=(/bin/bash "$HERE/launch.sh" "$RUNTIME" "$HOMEDIR" "$INSTALL" "$guest_cwd"
+    --graphics "${VRCM_GRAPHICS:-dxmt}"
+    --bind "/opt/steam=$STEAM_CLIENT:ro"
+    --env HOME=/home/user --env USER=user --env LOGNAME=user
+    --env PATH=/opt/wine/bin:/usr/bin:/bin --env LANG=en_US.UTF-8
+    --env WINEPREFIX=/home/user/prefix --env WINEARCH=win64
+    --env "WINEDEBUG=${VRCM_WINEDEBUG:--all}"
+    --env "WINEDLLOVERRIDES=mscoree,mshtml=;winemenubuilder.exe=d;d3d11,dxgi,d3d12=n;vrclient,vrclient_x64=n"
+    --env VTEST_SOCKET_NAME=/run/obelisk/vtest.sock --env NPT_DEBUG=force_vtest)
+if [ -f "$RUNTIME/guest/steam-hostpid.so" ]; then
+    cmd+=(--bind "/opt/obelisk=$RUNTIME/guest:ro" --env LD_PRELOAD=/opt/obelisk/steam-hostpid.so)
+fi
+if [ -n "$MEDIA" ]; then
+    cmd+=(--bind "/opt/media=$MEDIA:ro"
+        --env LD_LIBRARY_PATH=/opt/media/lib
+        --env GST_PLUGIN_SYSTEM_PATH_1_0=/opt/media/plugins
+        --env GST_PLUGIN_SCANNER=/opt/media/bin/gst-plugin-scanner
+        --env GST_REGISTRY=/home/user/gst-registry.bin
+        --env VRONMAC_HTTP_RANGE=1 --env VRONMAC_SKIP_OPTIONAL_VIDEO_EFFECTS=1)
+    if [ "${VRCM_DRYRUN:-0}" != 1 ] && [ ! -f "$HOMEDIR/.media-registered" ]; then
+        echo "Registering Wine media support in the VRChat profile."
+        "${cmd[@]}" -- 'C:\windows\system32\regsvr32.exe' /s 'C:\windows\system32\winegstreamer.dll' || exit 1
+        grep -qiF '317df618-5e5a-468a-9f15-d827a9a08162' "$HOMEDIR/prefix/system.reg" || exit 1
+        touch "$HOMEDIR/.media-registered" || exit 1
+    fi
+fi
+# What steam_api and lsteamclient read from the session Steam started the game in.
+for v in SteamAppId SteamGameId SteamOS Steam3Master SteamClientService; do cmd+=(--pass "$v"); done
+cmd+=(-- 'C:\windows\system32\steam.exe' "$guest_exe" "$@")
+
+echo "runtime: $RUNTIME"
+echo "home:    $HOMEDIR"
+echo "steam:   $STEAM_CLIENT (build $(cat "$STEAM_CLIENT/version" 2>/dev/null))"
+echo "install: $INSTALL -> $guest_exe (cwd $guest_cwd)"
+echo "Steam3Master=${Steam3Master:-unset} SteamClientService=${SteamClientService:-unset} SteamAppId=${SteamAppId:-unset}"
+if [ "${VRCM_DRYRUN:-}" = 1 ]; then
+    printf '%q ' "${cmd[@]}"
+    echo
+    exit 0
+fi
+"${cmd[@]}"
+status=$?
+echo "=== exit $status"
+exit $status

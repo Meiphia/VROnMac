@@ -1,0 +1,36 @@
+name: Source and launcher checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 scripts/check-source.py
+      - name: Parse project Python scripts
+        run: |
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          for path in Path('scripts').glob('*.py'):
+              ast.parse(path.read_text(), filename=str(path))
+          PY
+      - name: Check project shell scripts
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+  launcher:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build launcher and run isolated setup tests
+        run: bash scripts/build-launcher.sh

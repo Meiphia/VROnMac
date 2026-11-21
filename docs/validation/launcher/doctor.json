@@ -1,0 +1,38 @@
+[
+  {
+    "detail" : "Steam installation found",
+    "id" : "steam",
+    "ready" : true,
+    "title" : "Steam"
+  },
+  {
+    "detail" : "Tested Steam build and matching compatibility files found",
+    "id" : "integration",
+    "ready" : true,
+    "title" : "Steam compatibility"
+  },
+  {
+    "detail" : "Verified setup uses Voile v26.3.0-24",
+    "id" : "runtime",
+    "ready" : true,
+    "title" : "Windows support"
+  },
+  {
+    "detail" : "Configured VRChat environment found",
+    "id" : "prefix",
+    "ready" : true,
+    "title" : "VRChat environment"
+  },
+  {
+    "detail" : "Windows VRChat installation found",
+    "id" : "game",
+    "ready" : true,
+    "title" : "VRChat"
+  },
+  {
+    "detail" : "Virtual microphone installed",
+    "id" : "microphone",
+    "ready" : true,
+    "title" : "Microphone support"
+  }
+]

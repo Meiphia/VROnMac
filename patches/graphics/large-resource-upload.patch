@@ -1,0 +1,86 @@
+diff --git a/virglrenderer/src/neptune/npt_dispatch.c b/virglrenderer/src/neptune/npt_dispatch.c
+index 407e08c..c96e2bc 100644
+--- a/virglrenderer/src/neptune/npt_dispatch.c
++++ b/virglrenderer/src/neptune/npt_dispatch.c
+@@ -164,7 +164,8 @@ npt_dispatch_resource_update(struct npt_context *ctx,
+    if (npt_cs_decoder_get_fatal(dec))
+       return;
+ 
+-   if (cmd.byte_size > NPT_MAX_RESOURCE_UPDATE_BYTES) {
++   uint32_t payload_aligned;
++   if (!npt_resource_update_payload_size(cmd.byte_size, &payload_aligned)) {
+       npt_log("resource_update: byte_size %u exceeds cap %u",
+               cmd.byte_size, NPT_MAX_RESOURCE_UPDATE_BYTES);
+       npt_cs_decoder_set_fatal(dec);
+@@ -174,7 +175,6 @@ npt_dispatch_resource_update(struct npt_context *ctx,
+    /* Zero-copy: SHM payload is contiguous so we skip the temp-pool
+     * memcpy on the hot path.  Fall back to alloc_temp if the payload
+     * straddles the stream end (shouldn't happen with contiguous SHM). */
+-   const uint32_t payload_aligned = (cmd.byte_size + 7u) & ~7u;
+    void *data = npt_cs_decoder_get_blob_storage(dec, payload_aligned);
+    if (likely(data)) {
+       dec->cur += payload_aligned;
+diff --git a/virglrenderer/src/neptune/npt_resource.c b/virglrenderer/src/neptune/npt_resource.c
+index fee661d..564274b 100644
+--- a/virglrenderer/src/neptune/npt_resource.c
++++ b/virglrenderer/src/neptune/npt_resource.c
+@@ -166,6 +166,20 @@ npt_resource_update(struct npt_context *ctx,
+       return;
+    }
+ 
++   /* Identify unusually large uploads without logging payload data. */
++   static unsigned large_upload_logs = 0;
++   if (byte_size > (64u << 20) && large_upload_logs < 8) {
++      PFN_ID3D11Resource_GetType get_type =
++         NPT_COM_VTBL_FUNC(PFN_ID3D11Resource_GetType, npt_com_vtable(resource),
++                           NPT_VTBL_ID3D11Resource_GetType);
++      D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
++      get_type(resource, &dimension);
++      npt_log("large resource upload: id=%llu dimension=%u bytes=%u sub=%u row_pitch=%u depth_pitch=%u",
++              (unsigned long long)resource_id, (unsigned)dimension, byte_size,
++              subresource, row_pitch, depth_pitch);
++      ++large_upload_logs;
++   }
++
+    ID3D11DeviceContext *imm_ctx = NULL;
+    PFN_ID3D11Device_GetImmediateContext get_ctx =
+       NPT_COM_VTBL_FUNC(PFN_ID3D11Device_GetImmediateContext,
+diff --git a/virglrenderer/src/neptune/npt_resource.h b/virglrenderer/src/neptune/npt_resource.h
+index b3dc63c..72e118f 100644
+--- a/virglrenderer/src/neptune/npt_resource.h
++++ b/virglrenderer/src/neptune/npt_resource.h
+@@ -18,10 +18,7 @@
+ struct npt_context;
+ struct npt_resource;
+ 
+-/* Hard cap on per-call payload byte_size.  Bounded so the byte_size+7
+- * alignment math can't wrap to 0 on a hostile value and read stale
+- * bytes. */
+-#define NPT_MAX_RESOURCE_UPDATE_BYTES (64u << 20)
++#include "npt_resource_limits.h"
+ 
+ /* RESOURCE_UPDATE.  `payload` points at the contiguous source bytes in
+  * the decoder's stream; lifetime is the caller's responsibility. */
+--- /dev/null
++++ b/virglrenderer/src/neptune/npt_resource_limits.h
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: MIT */
++#ifndef NPT_RESOURCE_LIMITS_H
++#define NPT_RESOURCE_LIMITS_H
++#include <stdbool.h>
++#include <stdint.h>
++/* Bounded per-call upload, large enough for legitimate avatar/texture buffers.
++ * Keep the cap far below UINT32_MAX so alignment cannot overflow. */
++#define NPT_MAX_RESOURCE_UPDATE_BYTES (256u << 20)
++#if NPT_MAX_RESOURCE_UPDATE_BYTES > UINT32_MAX - 7u
++#error Resource upload cap must leave room for 8-byte alignment
++#endif
++static inline bool
++npt_resource_update_payload_size(uint32_t byte_size, uint32_t *aligned)
++{
++   if (byte_size > NPT_MAX_RESOURCE_UPDATE_BYTES)
++      return false;
++   *aligned = (byte_size + 7u) & ~7u;
++   return true;
++}
++#endif
