@@ -2,7 +2,7 @@
 
 First off: This was vibecoded as hell. I made nothing, I told a machine to make it. Anyone who uses AI and claims they "made" an app is lying to themself and people around them. That said, generally all I had was a concept of how VR works on Linux, after doing that for a long time, and while there are other VR methods out there for MacOS, none tackle face-tracking or Full-Body Tracking via Quest Pro. So, I decided to give that a go with all the Linux lessons in mind.
 
-This is a simple app that relies on NotProton and Crossover at its foundation. It will not work without these things.
+This is a simple app that relies on NotProton and Crossover at its foundation. It will not work without these things. You'll also need to sideload the Quest APK (see in Releases along with the app itself) by using something like SideQuest (which requires Developer mode turned on in your headset).
 
 What has been tested so far is VRChat, which works decently well on an M4 Pro 24GB Macbook Pro. Performance is pretty varied but I think most people who play VRC are more or less used to 30-50fps even in optimal conditions. The main known issue right now is that it crashes randomly. Haven't been able to track down what's causing it, but my theory is it has something to do with video streaming or encoding from video players. Other than that it runs quite smoothly, temps seem to sit around 85-90 celsius once the fans kick in which is alright.
 
